@@ -1,0 +1,115 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local Settings = {
+    Enabled = false,
+    ToggleKey = Enum.KeyCode.Q,
+    FOV = 250, 
+    TeamCheck = false, -- Tắt tạm kiểm tra team để tránh bị lỗi mất mục tiêu
+    TargetPart = "HumanoidRootPart" -- Đổi sang thân người cho dễ dính hơn Head
+}
+
+-- Tạo giao diện nút bấm
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ToggleGUI"
+ScreenGui.ResetOnSpawn = false
+pcall(function()
+    ScreenGui.Parent = CoreGui
+end)
+if not ScreenGui.Parent then
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Size = UDim2.new(0, 120, 0, 40)
+ToggleButton.Position = UDim2.new(0, 50, 0, 50)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 14
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.Text = "Status: OFF"
+ToggleButton.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = ToggleButton
+
+-- Tạo Vòng tròn FOV
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = false
+FOVCircle.Radius = Settings.FOV
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+FOVCircle.Thickness = 1
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.7
+
+local function UpdateToggle()
+    Settings.Enabled = not Settings.Enabled
+    if Settings.Enabled then
+        ToggleButton.Text = "Status: ON"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+        FOVCircle.Visible = true
+    else
+        ToggleButton.Text = "Status: OFF"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+        FOVCircle.Visible = false
+    end
+end
+
+ToggleButton.MouseButton1Click:Connect(UpdateToggle)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Settings.ToggleKey then
+        UpdateToggle()
+    end
+end)
+
+local function GetClosestPlayer()
+    if not Settings.Enabled then return nil end
+    
+    local target = nil
+    local shortestDist = math.huge
+    local screenCenter = Camera.ViewportSize / 2
+
+    FOVCircle.Position = screenCenter
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            if not Settings.TeamCheck or (player.Team ~= LocalPlayer.Team) then
+                local character = player.Character
+                if character and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0 then
+                    local part = character:FindFirstChild(Settings.TargetPart)
+                    if part then
+                        local screenPoint, onScreen = Camera:WorldToViewportPoint(part.Position)
+                        if onScreen then
+                            local dist = (Vector2.new(screenPoint.X, screenPoint.Y) - screenCenter).Magnitude
+                            if dist < Settings.FOV and dist < shortestDist then
+                                shortestDist = dist
+                                target = character
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return target
+end
+
+RunService.RenderStepped:Connect(function()
+    if Settings.Enabled then
+        FOVCircle.Position = Camera.ViewportSize / 2
+        
+        local target = GetClosestPlayer()
+        if target and target:FindFirstChild(Settings.TargetPart) then
+            local targetPart = target[Settings.TargetPart]
+            -- Ép góc nhìn camera mượt mà vào mục tiêu
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+        end
+    end
+end)
